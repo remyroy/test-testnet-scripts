@@ -1,43 +1,44 @@
 #!/bin/bash
 
 genesis_repository="pk910/test-testnet-repo"
-testnet_dir=/home/etherum/testnet
-el_datadir=/home/etherum/data-geth
-cl_datadir=/home/etherum/data-lh
+testnet_dir=/var/lib/ethereum/testnet
+el_datadir=/var/lib/goethereum
+cl_datadir=/var/lib/lighthouse
 cl_port=5052
 
 
 start_clients() {
   # start EL / CL clients
   echo "start clients"
-  sudo /bin/systemctl start geth
-  sudo /bin/systemctl start beacon-chain
-  sudo /bin/systemctl start validator
+  sudo systemctl start geth
+  sudo systemctl start lighthousebeacon
+  sudo systemctl start lighthousevalidator
 }
 
 stop_clients() {
   # stop EL / CL clients
   echo "stop clients"
-  sudo /bin/systemctl stop geth
-  sudo /bin/systemctl stop beacon-chain
-  sudo /bin/systemctl stop validator
+  sudo systemctl stop geth
+  sudo systemctl stop lighthousebeacon
+  sudo systemctl stop lighthousevalidator
 }
 
 clear_datadirs() {
   if [ -d $el_datadir/geth ]; then
-    geth_nodekey=$(cat $el_datadir/geth/nodekey)
-    rm -rf $el_datadir/geth
-    mkdir $el_datadir/geth
-    echo $geth_nodekey > $el_datadir/geth/nodekey
+    geth_nodekey=$(sudo cat $el_datadir/geth/nodekey)
+    sudo rm -rf $el_datadir/geth
+    sudo mkdir $el_datadir/geth
+    sudo echo $geth_nodekey > $el_datadir/geth/nodekey
+    sudo chown -R goeth:goeth /var/lib/goethereum
   fi
 
-  rm -rf $cl_datadir/beacon
-  rm -rf $cl_datadir/validators/slashing_protection.sqlite
+  sudo rm -rf $cl_datadir/beacon
+  sudo rm -rf $cl_datadir/validators/slashing_protection.sqlite
 }
 
 setup_genesis() {
   # init el genesis
-  ~/geth/bin/geth init --datadir $el_datadir $testnet_dir/genesis.json
+  sudo -u goeth geth init --datadir $el_datadir $testnet_dir/genesis.json
 }
 
 
@@ -47,6 +48,7 @@ get_github_release() {
     grep '"tag_name":' |
     sed -E 's/.*"([^"]+)".*/\1/' |
     head -n 1
+  
 }
 
 download_genesis_release() {
@@ -61,6 +63,7 @@ download_genesis_release() {
 
   # get latest genesis
   wget -qO- https://github.com/$genesis_repository/releases/download/$genesis_release/testnet-all.tar.gz | tar xvz -C $testnet_dir
+  sudo chmod -R +r $testnet_dir
 }
 
 reset_testnet() {
