@@ -1,8 +1,15 @@
 #cloud-config
 packages:
   - git
-  - build-essential
+  - make
+  - gcc
+  - libc6-dev
   - sudo
+  - postgresql
+  - postgresql-contrib
+  - ca-certificates
+  - gnupg
+  - lsb-release
 users:
   - name: etherum
     passwd: $y$j9T$l7LoiuMmQOhz4F0lk1OP70$k773z/UTbPo8FKefmuanAMxxjbu1qSUPvZLOKYw9MT3
@@ -11,6 +18,10 @@ users:
     home: /home/etherum
     shell: /bin/bash
     uid: "1001"
+  - name: blockscout
+    home: /home/blockscout
+    shell: /bin/bash
+    uid: "1002"
 write_files:
   - path: /etc/ssh/sshd_config.d/pknet-ssh.conf
     content: |
@@ -18,7 +29,7 @@ write_files:
   - path: /etc/sudoers.d/etherum
     content: |
       # Cmnd alias specification
-      Cmnd_Alias ETH_CMDS = /bin/systemctl stop geth, /bin/systemctl start geth, /bin/systemctl stop beacon-chain, /bin/systemctl start beacon-chain, /bin/systemctl stop validator, /bin/systemctl start validator, /bin/systemctl stop boot-node, /bin/systemctl start boot-node
+      Cmnd_Alias ETH_CMDS = /bin/systemctl stop geth, /bin/systemctl start geth, /bin/systemctl stop beacon-chain, /bin/systemctl start beacon-chain, /bin/systemctl stop validator, /bin/systemctl start validator, /bin/systemctl stop boot-node, /bin/systemctl start boot-node, /home/blockscout/start.sh, /home/blockscout/stop.sh, /root/reset-blockscout-db.sh
 
       # User privilege specification
       etherum    ALL=(ALL) NOPASSWD: ETH_CMDS
@@ -32,7 +43,7 @@ write_files:
       [Service]
       User            = etherum
       WorkingDirectory= /home/etherum/geth
-      ExecStart       = /home/etherum/geth/bin/geth --datadir /home/etherum/data-geth --port 30303 --http --http.addr 0.0.0.0 --http.port 8545 --http.api eth,net,personal,web3 --ws --ws.addr 0.0.0.0 --ws.port 8546 --ws.api eth,net,personal,web3 --authrpc.jwtsecret=/home/etherum/jwtsecret --syncmode=full --bootnodes "enode://0f2c301a9a3f9fa2ccfa362b79552c052905d8c2982f707f46cd29ece5a9e1c14ecd06f4ac951b228f059a43c6284a1a14fce709e8976cac93b50345218bf2e9@135.181.140.168:30343"
+      ExecStart       = /home/etherum/geth/bin/geth --datadir /home/etherum/data-geth --port 30303 --http --http.addr 0.0.0.0 --http.port 8545 --http.api eth,net,personal,web3,txpool,debug --ws --ws.addr 0.0.0.0 --ws.port 8546 --ws.api eth,net,personal,web3,txpool,debug --authrpc.jwtsecret=/home/etherum/jwtsecret --syncmode=full --bootnodes "enode://0f2c301a9a3f9fa2ccfa362b79552c052905d8c2982f707f46cd29ece5a9e1c14ecd06f4ac951b228f059a43c6284a1a14fce709e8976cac93b50345218bf2e9@135.181.140.168:30343"
       Restart         = on-failure
 
       [Install]
@@ -46,9 +57,9 @@ write_files:
 
       [Service]
       User            = etherum
-      WorkingDirectory= /home/etherum/lodestar
+      WorkingDirectory= /home/etherum/lighthouse
       EnvironmentFile = /home/etherum/testnet/nodevars_env.txt
-      ExecStart       = /home/etherum/lodestar/lodestar beacon --dataDir=/home/etherum/data-lodestar --paramsFile=/home/etherum/testnet/config.yaml --genesisStateFile=/home/etherum/testnet/genesis.ssz --eth1.depositContractDeployBlock=0 --network.connectToDiscv5Bootnodes=true --discv5=true --eth1=true --eth1.providerUrls=http://localhost:8545 --execution.urls=http://localhost:8551 --rest=true --rest.address=0.0.0.0 --rest.namespace=* --rest.port=4000 --jwt-secret=/home/etherum/jwtsecret --bootnodes="${BOOTNODE_ENR_LIST}"
+      ExecStart       = /home/etherum/lighthouse/lighthouse bn --testnet-dir /home/etherum/testnet --datadir /home/etherum/data-lh --staking --metrics --port 9010 --http-address 0.0.0.0 --metrics-address 0.0.0.0 --execution-endpoint http://127.0.0.1:8551 --execution-jwt="/home/etherum/jwtsecret" --boot-nodes ${BOOTNODE_ENR_LIST}
       Restart         = on-failure
 
       [Install]
@@ -62,19 +73,47 @@ write_files:
 
       [Service]
       User            = etherum
-      WorkingDirectory= /home/etherum/lodestar
-      ExecStart       = /home/etherum/lodestar/lodestar validator --dataDir=/home/etherum/data-lodestar --paramsFile=/home/etherum/testnet/config.yaml --server http://localhost:4000 --keystoresDir=/home/etherum/data-keys/keys --secretsDir=/home/etherum/data-keys/secrets --graffiti "pk910 (4)" --suggested-fee-recipient 0x14627ea0e2B27b817DbfF94c3dA383bB73F8C30b
+      WorkingDirectory= /home/etherum/lighthouse
+      ExecStart       = /home/etherum/lighthouse/lighthouse vc --testnet-dir /home/etherum/testnet --datadir /home/etherum/data-lh --beacon-nodes "http://localhost:5052" --graffiti "pk910 (2)" --suggested-fee-recipient 0x14627ea0e2B27b817DbfF94c3dA383bB73F8C30b --init-slashing-protection --allow-unsynced
       Restart         = on-failure
 
       [Install]
       WantedBy= multi-user.target
+  - path: /root/reset-blockscout-db.sh
+    content: |
+      #!/bin/bash
+
+      sudo -u postgres bash -c "cd ~ && dropdb blockscout"
+      sudo -u postgres bash -c "cd ~ && createdb blockscout -O blockscout"
+      
   - path: /root/setup.sh
     content: |
-      curl -sS https://dl.yarnpkg.com/debian/pubkey.gpg | apt-key add
-      echo "deb https://dl.yarnpkg.com/debian/ stable main" | tee /etc/apt/sources.list.d/yarn.list
-      curl -sL https://deb.nodesource.com/setup_16.x | sudo -E bash -
+      #!/bin/bash
+
+      # install docker
+      mkdir -p /etc/apt/keyrings
+      curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+      echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian  $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null
       apt-get update
-      apt-get install -y nodejs yarn
+      apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+
+      # setup database server
+      echo "listen_addresses = '*'" >> /etc/postgresql/13/main/postgresql.conf
+      echo "host all all 172.17.0.0/16 trust" >> /etc/postgresql/13/main/pg_hba.conf
+
+      pg_ctlcluster 13 main start
+      service postgresql restart
+
+      blockscout_db_password=$(tr -dc A-Za-z0-9 </dev/urandom | head -c 16 ; echo '')
+      sudo -u postgres bash -c "cd ~ && createuser blockscout"
+      sudo -u postgres bash -c "cd ~ && createdb blockscout -O blockscout"
+      echo "alter user blockscout with password '$blockscout_db_password'" | sudo -u postgres bash -c "cd ~ && psql blockscout"
+      
+      echo "$blockscout_db_password" > /home/blockscout/.dbpassword.txt
+
+      # add blockscout user to docker group
+      usermod -a -G docker blockscout
+
   - path: /home/etherum/update.sh
     content: |
       #!/bin/bash
@@ -105,9 +144,6 @@ write_files:
       fi
       cd ..
 
-      # install eth2-val-tools
-      go install github.com/protolambda/eth2-val-tools@latest
-
       # update geth
       mkdir -p geth
       cd geth
@@ -132,32 +168,21 @@ write_files:
       fi
       cd ..
 
-      # update lodestar
-      mkdir -p lodestar
-      cd lodestar
-      lodestar_release=$(get_github_release chainsafe/lodestar)
-      if [ ! -z "$lodestar_release" ] && [ ! -d "$lodestar_release" ]; then
-        wget "https://github.com/ChainSafe/lodestar/archive/refs/tags/${lodestar_release}.tar.gz"
-        mkdir $lodestar_release
-        cd $lodestar_release
-        tar xfz ../${lodestar_release}.tar.gz
-        cd lodestar-*
-        lodestar_path=$(pwd)
-
-        yarn install --ignore-optional
-        yarn run build
-        
-        rm /home/etherum/lodestar 2> /dev/null
-        ln -s $lodestar_path /home/etherum/lodestar
-        cd ..
+      # update lighthouse
+      mkdir -p lighthouse
+      cd lighthouse
+      lighthouse_release=$(get_github_release sigp/lighthouse)
+      if [ ! -z "$lighthouse_release" ] && [ ! -d "$lighthouse_release" ]; then
+        wget "https://github.com/sigp/lighthouse/releases/download/$lighthouse_release/lighthouse-${lighthouse_release}-x86_64-unknown-linux-gnu-portable.tar.gz"
+        mkdir $lighthouse_release
+        cd $lighthouse_release
+        tar xfz ../lighthouse-${lighthouse_release}-x86_64-unknown-linux-gnu-portable.tar.gz
+        chmod +x ./*
+        rm /home/etherum/lighthouse 2> /dev/null
+        ln -s /home/etherum/src/lighthouse/$lighthouse_release /home/etherum/lighthouse
         cd ..
       fi
       cd ..
-
-      # create jwtsecret if not found
-      if ! [ -f /home/etherum/jwtsecret ]; then
-        echo -n 0x$(openssl rand -hex 32 | tr -d "\n") > /home/etherum/jwtsecret
-      fi
   - path: /home/etherum/retention.sh
     content: |
       #!/bin/bash
@@ -165,8 +190,8 @@ write_files:
       genesis_repository="pk910/test-testnet-repo"
       testnet_dir=/home/etherum/testnet
       el_datadir=/home/etherum/data-geth
-      cl_datadir=/home/etherum/data-lodestar
-      cl_port=4000
+      cl_datadir=/home/etherum/data-lh
+      cl_port=5052
 
 
       start_clients() {
@@ -175,6 +200,7 @@ write_files:
         sudo /bin/systemctl start geth
         sudo /bin/systemctl start beacon-chain
         sudo /bin/systemctl start validator
+        sudo -u blockscout /home/blockscout/start.sh
       }
 
       stop_clients() {
@@ -183,6 +209,7 @@ write_files:
         sudo /bin/systemctl stop geth
         sudo /bin/systemctl stop beacon-chain
         sudo /bin/systemctl stop validator
+        sudo -u blockscout /home/blockscout/stop.sh
       }
 
       clear_datadirs() {
@@ -193,7 +220,10 @@ write_files:
           echo $geth_nodekey > $el_datadir/geth/nodekey
         fi
 
-        rm -rf $cl_datadir/*
+        rm -rf $cl_datadir/beacon
+        rm -rf $cl_datadir/validators/slashing_protection.sqlite
+
+        sudo /root/reset-blockscout-db.sh
       }
 
       setup_genesis() {
@@ -284,17 +314,71 @@ write_files:
     content: |
       #!/bin/bash
       cd /home/etherum
-      export PATH=/home/etherum/golang/bin:/home/etherum/go/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+      
+      # ADD YOUR VALIDATOR MNEMONIC HERE
+      validator_mnemonic=""
+      validator_count=100
 
-      # validator mnemonic
-      mnemonic="*** INSERT VALIDATOR MNEMONIC HERE ***"
-      validator_count="50"
+      if [ $validator_mnemonic ]; then
+        echo $validator_mnemonic | lighthouse/lighthouse account validator recover --datadir /home/etherum/data-lh --stdin-inputs --count $validator_count
+      fi
 
-      eth2-val-tools keystores --insecure --prysm-pass password --out-loc /home/etherum/data-keys --source-mnemonic "$mnemonic" --source-max $validator_count
+  - path: /home/blockscout/setup.sh
+    content: |
+      #!/bin/bash
+      cd /home/blockscout
+      chmod +x start.sh
+      chmod +x stop.sh
+
+      mkdir -p ./data-explorer
+
+      echo "MIX_ENV=prod" > ./data-explorer/blockscout.env
+      echo "INDEXER_DISABLE_INTERNAL_TRANSACTIONS_FETCHER=false" >> ./data-explorer/blockscout.env
+      echo "COIN=ETH" >> ./data-explorer/blockscout.env
+      echo "DISABLE_EXCHANGE_RATES=true" >> ./data-explorer/blockscout.env
+      echo "DISABLE_KNOWN_TOKENS=true" >> ./data-explorer/blockscout.env
+      echo "SHOW_PRICE_CHART=false" >> ./data-explorer/blockscout.env
+      echo "ENABLE_1559_SUPPORT=true" >> ./data-explorer/blockscout.env
+      echo "DISABLE_READ_API=false" >> ./data-explorer/blockscout.env
+      echo "DISABLE_WRITE_API=false" >> ./data-explorer/blockscout.env
+      echo "ENABLE_TXS_STATS=true" >> ./data-explorer/blockscout.env
+      echo "SHOW_TXS_CHART=true" >> ./data-explorer/blockscout.env
+      echo "DATABASE_URL=postgresql://blockscout:$(cat ./.dbpassword.txt | tr -d " \n")@172.17.0.1:5432/blockscout?ssl=false" >> ./data-explorer/blockscout.env
+      echo "SECRET_KEY_BASE=VTIB3uHDNbvrY0+60ZWgUoUBKDn9ppLR8MI4CpRz4/qLyEFs54ktJfaNT6Z221No" >> ./data-explorer/blockscout.env
+      echo "ETHEREUM_JSONRPC_VARIANT=geth" >> ./data-explorer/blockscout.env
+      echo "ETHEREUM_JSONRPC_HTTP_URL=http://172.17.0.1:8545" >> ./data-explorer/blockscout.env
+      echo "ETHEREUM_JSONRPC_WS_URL=ws://172.17.0.1:8546" >> ./data-explorer/blockscout.env
+      echo "NETWORK=Ethereum" >> ./data-explorer/blockscout.env
+      echo "SUBNETWORK=Testnet" >> ./data-explorer/blockscout.env
+      echo "LOGO_TEXT=Test ephemeral testnet" >> ./data-explorer/blockscout.env
+      echo "BLOCK_TRANSFORMER=base" >> ./data-explorer/blockscout.env
+      echo "POOL_SIZE=15" >> ./data-explorer/blockscout.env
+      echo "CHAIN_SPEC_PATH=/custom_config_data/genesis.json" >> ./data-explorer/blockscout.env
+      echo "LINK_TO_OTHER_EXPLORERS=false" >> ./data-explorer/blockscout.env
+      echo "OTHER_EXPLORERS={}" >> ./data-explorer/blockscout.env
+      echo "SUPPORTED_CHAINS={}" >> ./data-explorer/blockscout.env
+  - path: /home/blockscout/start.sh
+    content: |
+      #!/bin/bash
+
+      docker run -d --restart unless-stopped --name=el_explorer \
+        --env-file ~/data-explorer/blockscout.env -p 3334:4000 \
+        -v /home/etherum/testnet:/custom_config_data \
+        -v $(pwd)/data-explorer:/data \
+        -it 'skylenet/blockscout:v4.1.5-beta' \
+        sh -c "echo $DATABASE_URL && mix do ecto.create, ecto.migrate && exec mix phx.server"
+
+  - path: /home/blockscout/stop.sh
+    content: |
+      #!/bin/bash
+
+      docker stop el_explorer
+      docker rm el_explorer
 runcmd:
   - [ chmod, +x, /root/setup.sh ]
   - [ /root/setup.sh ]
   - [ chown, -R, "etherum:etherum", /home/etherum ]
+  - [ chown, -R, "blockscout:blockscout", /home/blockscout ]
   - [ chmod, +x, /home/etherum/update.sh ]
   - [ sudo, -u, etherum, /home/etherum/update.sh ]
   - [ systemctl, daemon-reload ]
@@ -303,6 +387,8 @@ runcmd:
   - [ systemctl, enable, validator.service ]
   - [ chmod, +x, /home/etherum/setup-validators.sh ]
   - [ sudo, -u, etherum, /home/etherum/setup-validators.sh ]
+  - [ chmod, +x, /home/blockscout/setup.sh ]
+  - [ sudo, -u, etherum, /home/blockscout/setup.sh ]
   - [ chmod, +x, /home/etherum/setup-retention.sh ]
   - [ sudo, -u, etherum, /home/etherum/setup-retention.sh ]
 
