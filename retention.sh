@@ -38,7 +38,7 @@ clear_datadirs() {
 
 setup_genesis() {
   # init el genesis
-  sudo -u goeth geth init --datadir $el_datadir $testnet_dir/genesis.json
+  sudo -u goeth geth-dev init --datadir $el_datadir $testnet_dir/genesis.json
 }
 
 
