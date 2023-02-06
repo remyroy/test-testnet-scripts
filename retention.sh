@@ -28,7 +28,7 @@ clear_datadirs() {
     geth_nodekey=$(sudo cat $el_datadir/geth/nodekey)
     sudo rm -rf $el_datadir/geth
     sudo mkdir $el_datadir/geth
-    sudo echo $geth_nodekey > $el_datadir/geth/nodekey
+    echo $geth_nodekey | sudo tee $el_datadir/geth/nodekey > /dev/null
     sudo chown -R goeth:goeth /var/lib/goethereum
   fi
 
