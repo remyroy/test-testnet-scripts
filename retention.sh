@@ -1,6 +1,6 @@
 #!/bin/bash
 
-genesis_repository="pk910/test-testnet-repo"
+genesis_repository="ephemery-testnet/ephemery-genesis"
 testnet_dir=/var/lib/ethereum/testnet
 el_datadir=/var/lib/goethereum
 cl_datadir=/var/lib/lighthouse
